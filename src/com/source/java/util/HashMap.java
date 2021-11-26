@@ -25,6 +25,8 @@
 
 package java.util;
 
+import sun.misc.SharedSecrets;
+
 import java.io.IOException;
 import java.io.InvalidObjectException;
 import java.io.Serializable;
@@ -34,8 +36,6 @@ import java.util.function.BiConsumer;
 import java.util.function.BiFunction;
 import java.util.function.Consumer;
 import java.util.function.Function;
-
-import sun.misc.SharedSecrets;
 
 /**
  * Hash table based implementation of the <tt>Map</tt> interface.  This
@@ -232,6 +232,7 @@ public class HashMap<K, V> extends AbstractMap<K, V>
 
     /**
      * The default initial capacity - MUST be a power of two.
+     * 默认容量
      */
     static final int DEFAULT_INITIAL_CAPACITY = 1 << 4; // aka 16
 
@@ -239,11 +240,13 @@ public class HashMap<K, V> extends AbstractMap<K, V>
      * The maximum capacity, used if a higher value is implicitly specified
      * by either of the constructors with arguments.
      * MUST be a power of two <= 1<<30.
+     * 最大容量
      */
     static final int MAXIMUM_CAPACITY = 1 << 30;
 
     /**
      * The load factor used when none specified in constructor.
+     * 默认的加载因子
      */
     static final float DEFAULT_LOAD_FACTOR = 0.75f;
 
@@ -254,16 +257,16 @@ public class HashMap<K, V> extends AbstractMap<K, V>
      * than 2 and should be at least 8 to mesh with assumptions in
      * tree removal about conversion back to plain bins upon
      * shrinkage.
+     * 树化阈值，当链表大于这个阈值时就会树化
      */
-    //当大于这个阈值时就会自动转换成树
     static final int TREEIFY_THRESHOLD = 8;
 
     /**
      * The bin count threshold for untreeifying a (split) bin during a
      * resize operation. Should be less than TREEIFY_THRESHOLD, and at
      * most 6 to mesh with shrinkage detection under removal.
+     * 退化树阈值 当链表长度小于这个值就会从树变回链表
      */
-    //如果阈值小于这个数值时，就变回列表
     static final int UNTREEIFY_THRESHOLD = 6;
 
     /**
@@ -271,6 +274,7 @@ public class HashMap<K, V> extends AbstractMap<K, V>
      * (Otherwise the table is resized if too many nodes in a bin.)
      * Should be at least 4 * TREEIFY_THRESHOLD to avoid conflicts
      * between resizing and treeification thresholds.
+     * 树化的最小容量 如果达不到这个容量，则进行扩容
      */
     static final int MIN_TREEIFY_CAPACITY = 64;
 
@@ -342,6 +346,7 @@ public class HashMap<K, V> extends AbstractMap<K, V>
      * cheapest possible way to reduce systematic lossage, as well as
      * to incorporate impact of the highest bits that would otherwise
      * never be used in index calculations because of table bounds.
+     * ^ 异或符号
      */
     static final int hash(Object key) {
         int h;
@@ -404,6 +409,7 @@ public class HashMap<K, V> extends AbstractMap<K, V>
      * necessary. When allocated, length is always a power of two.
      * (We also tolerate length zero in some operations to allow
      * bootstrapping mechanics that are currently not needed.)
+     * 表，在第一次使用时初始化，并根据需要调整大小。 分配时，长度始终是 2 的幂
      */
     transient Node<K, V>[] table;
 
@@ -415,6 +421,7 @@ public class HashMap<K, V> extends AbstractMap<K, V>
 
     /**
      * The number of key-value mappings contained in this map.
+     * 表中映射的数
      */
     transient int size;
 
@@ -424,13 +431,14 @@ public class HashMap<K, V> extends AbstractMap<K, V>
      * the HashMap or otherwise modify its internal structure (e.g.,
      * rehash).  This field is used to make iterators on Collection-views of
      * the HashMap fail-fast.  (See ConcurrentModificationException).
+     * 表结构改变的次数
      */
     transient int modCount;
 
     /**
      * The next size value at which to resize (capacity * load factor).
      *
-     * @serial
+     * @serial 下一次扩容的阈值
      */
     // (The javadoc description is true upon serialization.
     // Additionally, if the table array has not been allocated, this
@@ -441,7 +449,7 @@ public class HashMap<K, V> extends AbstractMap<K, V>
     /**
      * The load factor for the hash table.
      *
-     * @serial
+     * @serial 加载因子
      */
     final float loadFactor;
 
@@ -466,6 +474,7 @@ public class HashMap<K, V> extends AbstractMap<K, V>
             throw new IllegalArgumentException("Illegal load factor: " +
                     loadFactor);
         this.loadFactor = loadFactor;
+        // 讲表大小设置为initialCapacity最接近的2的次幂
         this.threshold = tableSizeFor(initialCapacity);
     }
 
@@ -512,13 +521,17 @@ public class HashMap<K, V> extends AbstractMap<K, V>
     final void putMapEntries(Map<? extends K, ? extends V> m, boolean evict) {
         int s = m.size();
         if (s > 0) {
+            // 初始化表
             if (table == null) { // pre-size
+                // 计算table的大小
                 float ft = ((float) s / loadFactor) + 1.0F;
                 int t = ((ft < (float) MAXIMUM_CAPACITY) ?
                         (int) ft : MAXIMUM_CAPACITY);
+                // 如果table的大小 > 扩容阈值，则一次性将扩容阈值设为最大,方便进行复制
                 if (t > threshold)
                     threshold = tableSizeFor(t);
             } else if (s > threshold)
+                // 如果被复制表容量大于table扩容阈值，则对表进行扩容（一次扩容，可能还会在下一步进行第二次扩容）
                 resize();
             for (Map.Entry<? extends K, ? extends V> e : m.entrySet()) {
                 K key = e.getKey();
@@ -693,19 +706,27 @@ public class HashMap<K, V> extends AbstractMap<K, V>
      */
     final Node<K, V>[] resize() {
         Node<K, V>[] oldTab = table;
+        // 旧表容量
         int oldCap = (oldTab == null) ? 0 : oldTab.length;
+        // 旧表扩容阈值
         int oldThr = threshold;
+        // 新表容量、新表阈值初始化
         int newCap, newThr = 0;
+        // 如果旧表不为空
         if (oldCap > 0) {
+            // 如果旧表容量已经最大了，直接返回
             if (oldCap >= MAXIMUM_CAPACITY) {
                 threshold = Integer.MAX_VALUE;
                 return oldTab;
+                // 旧表容量扩大为原来两倍，判断 旧表容量否大于初始容量 且 新表容量小于最大容量的区间，
+                // 是的话就将新表阈值扩容为旧表扩容阈值两倍
             } else if ((newCap = oldCap << 1) < MAXIMUM_CAPACITY &&
                     oldCap >= DEFAULT_INITIAL_CAPACITY)
                 newThr = oldThr << 1; // double threshold
         } else if (oldThr > 0) // initial capacity was placed in threshold
             newCap = oldThr;
         else {               // zero initial threshold signifies using defaults
+            // 使用默认值初始化新表
             newCap = DEFAULT_INITIAL_CAPACITY;
             newThr = (int) (DEFAULT_LOAD_FACTOR * DEFAULT_INITIAL_CAPACITY);
         }
